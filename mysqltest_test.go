@@ -1,14 +1,12 @@
-package mysqltest_test
+package mysqltest
 
 import (
 	"testing"
-
-	"github.com/facebookgo/mysqltest"
 )
 
 func test(t *testing.T, answer int) {
 	t.Parallel()
-	mysql, db := mysqltest.NewServerDB(t, "metadb")
+	mysql, db := NewServerDB(t, "metadb")
 	defer mysql.Stop()
 
 	const id = 1

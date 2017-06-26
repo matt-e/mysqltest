@@ -3,6 +3,7 @@
 package mysqltest
 
 import (
+	"bufio"
 	"bytes"
 	"database/sql"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"text/template"
 	"time"
 
@@ -28,12 +30,10 @@ var configTemplate, configTemplateErr = template.New("config").Parse(`
 [mysqld]
 bind-address                    = 127.0.0.1
 datadir                         = {{.DataDir}}
+explicit_defaults_for_timestamp = 1
 innodb-buffer-pool-size         = 5M
-innodb-buffer-pool-stats        = 0
-innodb-log-file-size            = 1M
+innodb-log-file-size            = 4M
 innodb-read-io-threads          = 2
-innodb_additional_mem_pool_size = 1M
-innodb_mirrored_log_groups      = 1
 key_buffer_size                 = 16K
 max-binlog-size                 = 256K
 max-delayed-threads             = 5
@@ -86,11 +86,11 @@ func (s *Server) Start() {
 	}
 	s.Port = port
 
-	dir, err := ioutil.TempDir("", "mysql-DataDir-")
+	dir, err := ioutil.TempDir("", "mysql-datadir-")
 	if err != nil {
 		s.T.Fatalf(err.Error())
 	}
-	s.DataDir = dir
+	s.DataDir = filepath.Join(dir, "data")
 	s.Socket = filepath.Join(dir, "socket")
 
 	cf, err := os.Create(filepath.Join(dir, "my.cnf"))
@@ -105,7 +105,8 @@ func (s *Server) Start() {
 	}
 
 	defaultsFile := fmt.Sprintf("--defaults-file=%s", cf.Name())
-	s.cmd = exec.Command("mysql_install_db", defaultsFile, "--basedir", mysqlBaseDir)
+	baseDir := fmt.Sprintf("--basedir=%s", mysqlBaseDir)
+	s.cmd = exec.Command("mysqld", defaultsFile, "--initialize-insecure", baseDir)
 	if os.Getenv("MYSQLTEST_VERBOSE") == "1" {
 		s.cmd.Stdout = os.Stdout
 		s.cmd.Stderr = os.Stderr
