@@ -150,6 +150,40 @@ func (s *Server) DB(suffix string) *sql.DB {
 	return db
 }
 
+// Load takes sql statements from reader r and applies them to database db.
+// Statements are delimited by a semicolon.
+func Load(db *sql.DB, r io.Reader) error {
+
+	scanner := bufio.NewScanner(r)
+	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
+		}
+		if i := bytes.IndexByte(data, ';'); i >= 0 {
+			return i + 1, data[0:i], nil
+		}
+
+		if atEOF {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	})
+
+	for scanner.Scan() {
+		stmt := scanner.Text()
+		stmt = strings.Trim(stmt, " \n\r")
+		if stmt == "" {
+			continue
+		}
+		_, err := db.Exec(stmt)
+		if err != nil {
+			return fmt.Errorf("\"%s\" failed: %v", stmt, err)
+		}
+	}
+
+	return scanner.Err()
+}
+
 // NewStartedServer creates a new server starts it.
 func NewStartedServer(t Fatalf) *Server {
 	for {
