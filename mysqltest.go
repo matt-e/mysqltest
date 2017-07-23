@@ -45,6 +45,7 @@ sort_buffer_size                = 32K
 sql_mode                        = ''
 thread_cache_size               = 2
 thread_stack                    = 128K
+user                            = root
 `)
 
 var mysqlBaseDir string
