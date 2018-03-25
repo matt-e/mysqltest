@@ -42,7 +42,6 @@ net_buffer_length               = 2K
 port                            = {{.Port}}
 socket                          = {{.Socket}}
 sort_buffer_size                = 32K
-sql_mode                        = ''
 thread_cache_size               = 2
 thread_stack                    = 128K
 user                            = root
