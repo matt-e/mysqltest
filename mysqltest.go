@@ -47,21 +47,13 @@ thread_stack                    = 128K
 user                            = root
 `)
 
-var mysqlBaseDir string
+var mysqlBaseDirRegexp = regexp.MustCompile(`basedir        .*`)
 
 func init() {
 	if configTemplateErr != nil {
 		panic(configTemplateErr)
 	}
 
-	out, err := exec.Command("mysqld", "--help", "--verbose").CombinedOutput()
-	if err != nil {
-		panic(err)
-	}
-
-	// The spaces are important.
-	hit := regexp.MustCompile(`basedir        .*`).Find(out)
-	mysqlBaseDir = string(bytes.TrimSpace(hit[8:]))
 }
 
 // Fatalf is satisfied by testing.T or testing.B.
@@ -71,6 +63,7 @@ type Fatalf interface {
 
 // Server is a unique instance of a mysqld.
 type Server struct {
+	Path    string
 	Port    int
 	DataDir string
 	Socket  string
@@ -80,6 +73,17 @@ type Server struct {
 
 // Start the server, this will return once the server has been started.
 func (s *Server) Start() {
+	mysqld := filepath.Join(s.Path, "mysqld")
+
+	out, err := exec.Command(mysqld, "--help", "--verbose").CombinedOutput()
+	if err != nil {
+		panic(err)
+	}
+
+	// The spaces are important.
+	hit := regexp.MustCompile(`basedir        .*`).Find(out)
+	mysqlBaseDir := string(bytes.TrimSpace(hit[8:]))
+
 	port, err := freeport.Get()
 	if err != nil {
 		s.T.Fatalf(err.Error())
@@ -106,7 +110,7 @@ func (s *Server) Start() {
 
 	defaultsFile := fmt.Sprintf("--defaults-file=%s", cf.Name())
 	baseDir := fmt.Sprintf("--basedir=%s", mysqlBaseDir)
-	s.cmd = exec.Command("mysqld", defaultsFile, "--initialize-insecure", baseDir)
+	s.cmd = exec.Command(mysqld, defaultsFile, "--initialize-insecure", baseDir)
 	if os.Getenv("MYSQLTEST_VERBOSE") == "1" {
 		s.cmd.Stdout = os.Stdout
 		s.cmd.Stderr = os.Stderr
@@ -116,7 +120,7 @@ func (s *Server) Start() {
 	}
 
 	waiter := waitout.New(mysqlReadyForConnections)
-	s.cmd = exec.Command("mysqld", defaultsFile, "--basedir", mysqlBaseDir)
+	s.cmd = exec.Command(mysqld, defaultsFile, "--basedir", mysqlBaseDir)
 	if os.Getenv("MYSQLTEST_VERBOSE") == "1" {
 		s.cmd.Stdout = os.Stdout
 		s.cmd.Stderr = io.MultiWriter(os.Stderr, waiter)
@@ -205,6 +209,33 @@ func NewStartedServer(t Fatalf) *Server {
 // returns both.
 func NewServerDB(t Fatalf, db string) (*Server, *sql.DB) {
 	s := NewStartedServer(t)
+	if _, err := s.DB("").Exec("create database " + db); err != nil {
+		t.Fatalf(err.Error())
+	}
+	return s, s.DB(db)
+}
+
+// NewStartedServer creates a new server starts it.
+func NewStartedServerWithPath(t Fatalf, path string) *Server {
+	for {
+		s := &Server{T: t, Path: path}
+		start := make(chan struct{})
+		go func() {
+			defer close(start)
+			s.Start()
+		}()
+		select {
+		case <-start:
+			return s
+		case <-time.After(30 * time.Second):
+		}
+	}
+}
+
+// NewServerDB creates a new server, starts it, creates the named DB, and
+// returns both.
+func NewServerDBWithPath(t Fatalf, path string, db string) (*Server, *sql.DB) {
+	s := NewStartedServerWithPath(t, path)
 	if _, err := s.DB("").Exec("create database " + db); err != nil {
 		t.Fatalf(err.Error())
 	}
