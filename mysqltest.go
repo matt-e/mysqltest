@@ -5,6 +5,7 @@ package mysqltest
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -21,7 +22,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/facebookgo/freeport"
-	"github.com/facebookgo/waitout"
 )
 
 var mysqlReadyForConnections = []byte("mysqld: ready for connections")
@@ -69,6 +69,24 @@ type Server struct {
 	Socket  string
 	T       Fatalf
 	cmd     *exec.Cmd
+}
+
+func (s *Server) waitForReady() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	t := time.NewTicker(1 * time.Second)
+	select {
+	case <-t.C:
+		_, err := sql.Open("mysql", s.DSN("mysql"))
+		if err == nil {
+			return nil
+		}
+		fmt.Printf("Failed to open connection: %#v", err)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
 }
 
 // Start the server, this will return once the server has been started.
@@ -119,18 +137,18 @@ func (s *Server) Start() {
 		s.T.Fatalf(err.Error())
 	}
 
-	waiter := waitout.New(mysqlReadyForConnections)
 	s.cmd = exec.Command(mysqld, defaultsFile, "--basedir", mysqlBaseDir)
 	if os.Getenv("MYSQLTEST_VERBOSE") == "1" {
 		s.cmd.Stdout = os.Stdout
-		s.cmd.Stderr = io.MultiWriter(os.Stderr, waiter)
-	} else {
-		s.cmd.Stderr = waiter
+		s.cmd.Stderr = os.Stderr
 	}
 	if err := s.cmd.Start(); err != nil {
 		s.T.Fatalf(err.Error())
 	}
-	waiter.Wait()
+
+	if err := s.waitForReady(); err != nil {
+		s.T.Fatalf(err.Error())
+	}
 }
 
 // Stop the server, this will also remove all data.
