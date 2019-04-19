@@ -71,22 +71,25 @@ type Server struct {
 	cmd     *exec.Cmd
 }
 
+// TODO: Fix logging
 func (s *Server) waitForReady() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	t := time.NewTicker(1 * time.Second)
-	select {
-	case <-t.C:
-		_, err := sql.Open("mysql", s.DSN("mysql"))
-		if err == nil {
-			return nil
+	for {
+		select {
+		case <-t.C:
+			db, err := sql.Open("mysql", s.DSN("mysql"))
+			if err == nil {
+				return db.Close()
+			}
+			fmt.Printf("Failed to open connection: %#v\n", err)
+		case <-ctx.Done():
+			fmt.Println("Timed out waiting for server to start")
+			return ctx.Err()
 		}
-		fmt.Printf("Failed to open connection: %#v", err)
-	case <-ctx.Done():
-		return ctx.Err()
 	}
-	return nil
 }
 
 // Start the server, this will return once the server has been started.
