@@ -146,11 +146,11 @@ func (s *Server) Start() {
 		s.cmd.Stderr = os.Stderr
 	}
 	if err := s.cmd.Start(); err != nil {
-		s.T.Fatalf(err.Error())
+		s.T.Fatalf("Failed to start mysql server: %v", err.Error())
 	}
 
 	if err := s.waitForReady(); err != nil {
-		s.T.Fatalf(err.Error())
+		s.T.Fatalf("Failed waiting for mysql server to become ready: %v", err.Error())
 	}
 }
 
@@ -258,7 +258,7 @@ func NewStartedServerWithPath(t Fatalf, path string) *Server {
 func NewServerDBWithPath(t Fatalf, path string, db string) (*Server, *sql.DB) {
 	s := NewStartedServerWithPath(t, path)
 	if _, err := s.DB("").Exec("create database " + db); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("Failed to create database: %v", err.Error())
 	}
 	return s, s.DB(db)
 }
